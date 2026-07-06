@@ -1,0 +1,16 @@
+# Garmin Connect IQ SDK (large, proprietary, downloaded separately)
+/sdk/
+
+# Private signing key material - never commit
+/keys/
+
+# Build outputs
+*.prg
+*.prg.debug.xml
+/gen/
+/internal-mir/
+/external-mir/
+
+# Editor/tooling
+/.vscode/
+/.claude/
