@@ -4,6 +4,8 @@ import Toybox.WatchUi;
 
 class HelloWorldView extends WatchUi.View {
 
+    const APP_VERSION = "2.0";
+
     function initialize() {
         View.initialize();
     }
@@ -19,6 +21,13 @@ class HelloWorldView extends WatchUi.View {
             dc.getHeight() / 2,
             Graphics.FONT_MEDIUM,
             "Hello World!",
+            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER
+        );
+        dc.drawText(
+            dc.getWidth() / 2,
+            dc.getHeight() - 10,
+            Graphics.FONT_XTINY,
+            "v" + APP_VERSION,
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER
         );
     }

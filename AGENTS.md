@@ -73,6 +73,15 @@ monkeyc -d fenix847mm -f monkey.jungle -o HelloWorld.prg -y keys/developer_key.d
 `-w` shows warnings. Add `-r` to strip debug info for a release build, `-e`
 to package as a distributable `.iq`.
 
+## Versioning
+
+- The on-screen version label ("v2.0" etc., drawn near the bottom of the
+  screen in `source/HelloWorldView.mc`, `APP_VERSION` constant) exists so a
+  build can be visually confirmed as loaded on the watch/simulator. **Bump
+  it every time you make a clean build**, following
+  [SemVer](https://semver.org) (`MAJOR.MINOR.PATCH`): patch for fixes,
+  minor for backwards-compatible features, major for breaking changes.
+
 ## Known gotchas
 
 - **`minSdkVersion` in `manifest.xml` must match what the target device
@@ -121,7 +130,12 @@ monkey.jungle                 # build file: points at manifest + source/resource
 source/
   HelloWorldApp.mc             # app entry point (getInitialView)
   HelloWorldView.mc            # onUpdate() draws "Hello World!"
-  HelloWorldDelegate.mc         # input handling (BehaviorDelegate)
+  HelloWorldDelegate.mc         # input handling (BehaviorDelegate); wires
+                                # hardware events to feature modules below
+  features/                    # self-contained hardware proof points, each
+                                # wired in via one line from a delegate/view
+                                # lifecycle method; not touched once working
+    ButtonPressToast.mc         # shows a toast naming the button pressed
 resources/
   strings/strings.xml          # @Strings.AppName
   drawables/drawables.xml      # @Drawables.LauncherIcon

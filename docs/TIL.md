@@ -111,3 +111,55 @@ monkeyc -d <device_id> -f monkey.jungle -o MyApp.prg -y keys/developer_key.der
 `.gitignore` should exclude: the downloaded `sdk/` folder (large, proprietary,
 not your code), `keys/` (private signing key), and build output (`*.prg`,
 `*.prg.debug.xml`, `gen/`, `internal-mir/`, `external-mir/`).
+
+## Debugging with `System.println()` via `monkeydo`
+
+- When the Simulator is launched via `monkeydo.bat <prg> <device>` from a
+  terminal (e.g. a VS Code task), `System.println()` output prints directly
+  to *that* terminal — no separate log viewer needed. This makes
+  `System.println` tracing a fast, low-ceremony way to see exactly which
+  delegate/lifecycle methods fire, in what order, for a given input.
+
+## Simulator input events don't all funnel through `onKey()`
+
+Building a button-press proof-of-concept (toast on key press) surfaced a few
+non-obvious things about how the Simulator delivers input, discovered by
+instrumenting every `BehaviorDelegate`/`InputDelegate` override
+(`onKey`, `onSelect`, `onBack`, `onTap`, `onSwipe`) with `System.println`:
+
+- **`onKey()` is not a reliable single choke point.** On this device/SDK
+  combo, the Simulator's Enter keyboard shortcut calls `onSelect()`
+  *directly* — it never emits a `KEY_ENTER` event through `onKey()` at all.
+  A feature that only hooks `onKey()` (as ours initially did) will silently
+  never fire for that button. Full coverage means instrumenting the
+  behavior-level overrides (`onSelect`, `onBack`, ...) too, not just the raw
+  key path.
+- **Esc double-fires and can crash the app.** Pressing Esc triggered
+  `onBack()` directly (same direct-shortcut path as Enter/`onSelect`), *and
+  then* a second, genuine `onKey(KEY_ESC)` hardware event arrived
+  afterward. Our `onKey()` override forwarded that to
+  `BehaviorDelegate.onKey()`'s default translation, which called `onBack()`
+  a second time. The default `onBack()`'s pop-the-view-stack/exit logic
+  isn't idempotent under that double call on a root view — it crashed the
+  process outright (visible as the `monkeydo` terminal task just ending,
+  with a leftover rendering artifact on the simulated screen). Fix: don't
+  rely on the default `onBack()` behavior for a root view's Back button —
+  override it to call `System.exit()` directly, which is safe to call more
+  than once.
+- **Not every physical button has a keyboard shortcut in the Simulator.**
+  Pressing "L" for the Light button (`KEY_LIGHT`) produced *zero* console
+  output — not even an unrecognized-key log — meaning the event never
+  reached `onKey`, `onTap`, `onSwipe`, `onSelect`, or `onBack` at all. This
+  looks like a Simulator-side gap (Light likely isn't bound to a key at
+  all and needs to be clicked on the rendered device bezel instead), not
+  an app bug — confirmed by the fact that every *other* key produces
+  console output the moment it's pressed.
+- **The actual numeric `KEY_*` values aren't worth guessing** — they're
+  Garmin/device-internal and not obviously documented per-value. Printing
+  `WatchUi.KEY_UP`, `KEY_DOWN`, etc. directly at startup gave the ground
+  truth for `fenix847mm`: `UP=13 DOWN=8 ENTER=4 ESC=5 MENU=7 LIGHT=1
+  START=18`.
+- **The bottom-right Back button is dual-purpose.** It reports as
+  `KEY_ESC` ("Back") in a plain UI/menu context, but as `KEY_LAP` while an
+  activity/recording session is active on the device — same physical
+  button, different code depending on app state.
