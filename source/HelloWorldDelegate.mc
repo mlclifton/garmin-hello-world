@@ -2,10 +2,10 @@ import Toybox.Lang;
 import Toybox.System;
 import Toybox.WatchUi;
 
-class HelloWorldDelegate extends WatchUi.BehaviorDelegate {
+class HelloWorldDelegate extends PagedDelegate {
 
     function initialize() {
-        BehaviorDelegate.initialize();
+        PagedDelegate.initialize(0);
         System.println(
             "Key codes — UP=" + WatchUi.KEY_UP
             + " DOWN=" + WatchUi.KEY_DOWN
@@ -27,13 +27,7 @@ class HelloWorldDelegate extends WatchUi.BehaviorDelegate {
     function onBack() as Boolean {
         System.println("HelloWorldDelegate.onBack fired");
         ButtonPressToast.show(WatchUi.KEY_ESC);
-        // Exit directly instead of delegating to the default popView
-        // behavior: the Simulator can dispatch Back twice for one physical
-        // press (once as a direct behavior shortcut, once via a raw onKey
-        // hardware event), and a second default pop/exit on an
-        // already-exiting root view is what was crashing the app.
-        // System.exit() is safe to call more than once.
-        System.exit();
+        return true;
     }
 
     function onKey(keyEvent as WatchUi.KeyEvent) as Boolean {
@@ -42,7 +36,7 @@ class HelloWorldDelegate extends WatchUi.BehaviorDelegate {
             + " type=" + keyEvent.getType()
         );
         ButtonPressToast.show(keyEvent.getKey());
-        return BehaviorDelegate.onKey(keyEvent) as Boolean;
+        return PagedDelegate.onKey(keyEvent) as Boolean;
     }
 
     function onTap(clickEvent as WatchUi.ClickEvent) as Boolean {

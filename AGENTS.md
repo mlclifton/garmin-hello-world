@@ -128,10 +128,15 @@ Windows-only TCP bridge tool (`shell.exe`) with an undocumented protocol.
 manifest.xml                  # app id, type, target device(s), permissions
 monkey.jungle                 # build file: points at manifest + source/resources
 source/
-  HelloWorldApp.mc             # app entry point (getInitialView)
-  HelloWorldView.mc            # onUpdate() draws "Hello World!"
-  HelloWorldDelegate.mc         # input handling (BehaviorDelegate); wires
-                                # hardware events to feature modules below
+  HelloWorldApp.mc             # app entry point (getInitialView -> page 0)
+  Pages.mc                     # ordered page list + switchToView navigation helper
+  PagedDelegate.mc              # shared base delegate: UP/DOWN page, BACK exits
+  HelloWorldView.mc            # page 0: onUpdate() draws "Hello World!"
+  HelloWorldDelegate.mc         # page 0 delegate (extends PagedDelegate)
+  CompassFaceView.mc           # page 1: static compass face (N/S/E/W ring)
+  CompassFaceDelegate.mc        # page 1 delegate (extends PagedDelegate)
+  CompassBearingView.mc        # page 2: live Sensor.Info.heading readout
+  CompassBearingDelegate.mc     # page 2 delegate (extends PagedDelegate)
   features/                    # self-contained hardware proof points, each
                                 # wired in via one line from a delegate/view
                                 # lifecycle method; not touched once working
@@ -141,3 +146,28 @@ resources/
   drawables/drawables.xml      # @Drawables.LauncherIcon
 docs/TIL.md                    # narrative notes on the environment setup
 ```
+
+## Page navigation
+
+The app is 3 pages, switched with `WatchUi.switchToView()` (no view stack
+growth) via `PagedDelegate`'s `onNextPage()`/`onPreviousPage()`, which any
+delegate can call directly by index. Pages loop at both ends. `Pages.mc`
+holds the ordered `[View, Delegate]` list so a delegate can move to the
+next/previous page without importing the others by name. `BACK` exits the
+app directly (`System.exit()`) from any page — see the Known gotchas
+section below for why the default `popView` behavior isn't used.
+
+`BehaviorDelegate` is documented as auto-translating physical UP/DOWN keys
+into `onPreviousPage()`/`onNextPage()` before `onKey()` ever runs (and
+skipping `onKey()` entirely if the behavior method returns `true`) — but on
+`fenix847mm` in this Simulator, that translation doesn't fire: `onKey()`
+was observed firing directly for UP/DOWN with no preceding
+`onNextPage`/`onPreviousPage` call. So `PagedDelegate.onKey()` checks
+`WatchUi.KEY_UP`/`KEY_DOWN` explicitly and calls
+`onPreviousPage()`/`onNextPage()` itself rather than relying on that
+translation. Same category of gap as the `KEY_LIGHT` finding below —
+don't assume a documented default key/behavior mapping holds on this
+device without checking `onKey()` output first.
+
+The compass bearing page (page 2) reads `Toybox.Sensor.Info.heading`, which
+requires the `Sensor` permission in `manifest.xml` (already added).

@@ -4,7 +4,7 @@ import Toybox.WatchUi;
 
 class HelloWorldView extends WatchUi.View {
 
-    const APP_VERSION = "2.0";
+    const APP_VERSION = "2.2.0";
 
     function initialize() {
         View.initialize();

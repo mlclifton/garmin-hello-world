@@ -163,3 +163,92 @@ instrumenting every `BehaviorDelegate`/`InputDelegate` override
   `KEY_ESC` ("Back") in a plain UI/menu context, but as `KEY_LAP` while an
   activity/recording session is active on the device — same physical
   button, different code depending on app state.
+
+## `BehaviorDelegate`'s documented UP/DOWN → paging translation doesn't fire here
+
+Building a 3-page app (Hello World / static compass face / live compass
+bearing), the natural approach was `WatchUi.switchToView()` driven by
+`BehaviorDelegate.onNextPage()`/`onPreviousPage()` — the SDK docs say these
+are triggered by the physical UP/DOWN buttons automatically, and that if a
+behavior method returns `true` the corresponding raw `onKey()` event is
+never delivered at all (same direct-dispatch mechanism documented above for
+`onSelect`/`onBack`).
+
+On `fenix847mm` in this Simulator, that translation never happens:
+instrumenting `onKey()` showed it firing directly for `KEY_UP`/`KEY_DOWN`,
+with `onNextPage()`/`onPreviousPage()` never called first. Same category of
+gap as the `KEY_LIGHT` finding above — a documented default key/behavior
+mapping that doesn't hold on this device/SDK combo. Fix: don't rely on the
+translation: check `keyEvent.getKey()` for `KEY_UP`/`KEY_DOWN` inside
+`onKey()` and call `onPreviousPage()`/`onNextPage()` directly.
+
+Also confirmed: `WatchUi.switchToView()` pops the current view and pushes
+the new one — it doesn't grow the view stack. So a paged app built this way
+never accumulates stack depth no matter how many times you page back and
+forth, which also means the default `popView`-based `onBack()` would exit
+after a single pop from *any* page, not just the root. Given the known
+Back-button double-fire (behavior-shortcut dispatch immediately followed by
+a genuine `onKey(KEY_ESC)` hardware event, both landing on `onBack()`), the
+safe pattern is still to override `onBack()` and never let it call the
+default pop/exit logic — but it no longer needs to call `System.exit()`
+either. Once `onBack()` only logs and shows a toast (no pop, no exit), the
+double-fire is completely harmless — it just logs/toasts twice per press.
+The crash was never really about double-firing; it was specifically about
+double-firing into the default `popView` behavior on a single-view stack.
+
+## A stale on-screen version number means the Simulator isn't running your latest build
+
+`monkeyc` compiling successfully in the container does **not** mean the
+Windows-side Simulator is showing that build. The Simulator can keep
+whatever `.prg` it last loaded running until it's explicitly told to load a
+new one (`monkeydo.bat` again) or the Simulator process itself is
+restarted. Since `APP_VERSION` is a compile-time constant baked into the
+binary, the on-screen version label doubles as a free "did my rebuild
+actually load" check: if two rounds of code changes both fail to change
+observed behavior *and* the version string on screen hasn't moved either,
+the build almost certainly never reached the Simulator — check that before
+spending time re-reading the Monkey C for a phantom bug. (`strings
+HelloWorld.prg | grep <version>` from inside the container confirms the
+*compiled* binary is current, which narrows the problem to the
+container→Simulator hand-off if the screen still disagrees.)
+
+## Simulating sensor data (e.g. compass heading) in the Simulator
+
+There's no physical gyroscope/magnetometer to move on a desktop Simulator,
+so any `Toybox.Sensor` value (heading included) is necessarily data-driven,
+via the Simulator's own **Simulation → Fit Data** menu:
+
+- **`Simulate Data`** — generates random-but-valid values for every sensor.
+  Fastest way to confirm a sensor-driven view actually redraws when new
+  data arrives, but the values themselves are meaningless.
+- **`Playback File`** — feeds a real recorded `.FIT` file's sensor track
+  (including whatever heading changes were actually recorded) through
+  `Toybox.Sensor` as if it were live. Much better for sanity-checking
+  degrees↔cardinal-direction math against a real, known track.
+
+Confirming *actual* live orientation tracking still requires the physical
+watch — sideload and rotate it by hand. Expect `Sensor.Info.heading` to
+read `null` until the compass is calibrated (may prompt for the figure-8
+motion) — worth having a placeholder ("no heading") rather than assuming
+the field is always populated.
+
+Also: `Toybox.Sensor` (and therefore `Sensor.Info.heading`) requires the
+`Sensor` permission in `manifest.xml`'s `<iq:permissions>` — this isn't
+obvious from the field docs themselves, only from the module-level
+"Requires Permission" tag in the SDK's HTML reference
+(`sdk/doc/Toybox/Sensor.html`).
+
+## Monkey C has no float `%` operator
+
+Animating a continuously-rotating "hand" (a radar-style sweep on the
+compass face, driven by elapsed wall-clock time via `System.getTimer()` so
+a delayed/dropped redraw can't slow it down) needs the time-derived angle
+wrapped into `[0, 2π)`. Writing that as `(elapsedMs * radiansPerMs) %
+(2 * Math.PI)` fails to compile: `Cannot perform operation 'mod' on types
+'Toybox.Lang.Float' and 'Toybox.Lang.Float'` — `%` only works on
+`Number`/`Long`. Fix: do the modulo on the millisecond count (an integer)
+*before* converting to radians, i.e. `(elapsedMs % periodMs) *
+radiansPerMs`. This has a second benefit beyond compiling: it keeps the
+angle bounded no matter how long the view stays on screen, instead of
+letting a single ever-growing float multiply out and lose precision over
+a long session.
